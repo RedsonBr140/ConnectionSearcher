@@ -1,81 +1,79 @@
 const Enquirer = require('enquirer');
 const Table = require('cli-table');
-const enquirer = new Enquirer();
+const axios = require('axios');
 require('dotenv').config();
 
-const UserHeaders = new Headers();
-const BotHeaders = new Headers();
-UserHeaders.append('Authorization', `${process.env.USER_TOKEN}`);
-BotHeaders.append('Authorization', `Bot ${process.env.BOT_TOKEN}`);
-const URL = 'https://discord.com/api/v9';
+const enquirer = new Enquirer();
+const API_URL = 'https://discord.com/api/v9';
 
-let table = new Table({
+const table = new Table({
     head: ['User', 'GitHub Account'],
     colWidths: [30, 50],
 });
 
-async function GETreq(url, headers) {
-    try {
-        let response = await fetch(url, { headers: headers });
-        if (response.ok) {
-            return await response.json();
-        } else {
-            throw new Error(
-                `Error: ${response.status} ${
-                    response.statusText
-                }\nURL:${url}\nMessage:${response.json().message}`
-            );
+const fetchData = async (url, Botheader) => {
+  try {
+    return await axios
+      .get(url, {
+        headers: {
+          'Authorization': Botheader ? `Bot ${process.env.BOT_TOKEN}` : process.env.USER_TOKEN
         }
-    } catch (error) {
-        console.error(error);
-    }
+      })
+      .then(async (response) => {
+        if (response.status === 200) {
+          return response.data;
+        }
+      });
+  } catch (error) {
+    console.log(`Error: ${error.response.status} ${error.response.statusText}\nMessage: ${error.message}`);
+  }
 }
 
-async function getServerID() {
-    const data = await GETreq(`${URL}/users/@me/guilds`, BotHeaders);
-    const prompt = await enquirer.prompt({
+const prompt = async (guilds) => {
+    const { server } = await enquirer.prompt({
         type: 'autocomplete',
         name: 'server',
         message: 'Which server do you want to scan?',
-        choices: data,
+        choices: guilds,
     });
-    for (let server of data) {
-        if (server.name == prompt.server) {
-            return server.id;
+    return server;
+};
+
+const getServerID = async (server, guilds) => {
+    return guilds.find((g) => g.name === server).id;
+};
+
+const delay = (time) => new Promise((resolve) => setTimeout(resolve, time));
+
+const run = async () => {
+    const guilds = await fetchData(`${API_URL}/users/@me/guilds`, true); // Bot header
+    const serverName = await prompt(guilds);
+    const serverID = await getServerID(serverName, guilds);
+    const members = await fetchData(
+        `${API_URL}/guilds/${serverID}/members?limit=${process.env.LIMIT}`,
+        true
+    );
+
+    for (const member of members) {
+        const user = await fetchData(
+            `${API_URL}/users/${member.user.id}/profile?guild_id=${serverID}`, // User header
+            false
+        );
+        const githubAccount = user.connected_accounts.find(
+            (a) => a.type === 'github'
+        );
+        if (githubAccount) {
+            table.push([
+                `${user.user.username}#${user.user.discriminator}`,
+                `https://github.com/${githubAccount.name}`,
+            ]);
         }
+        await delay(process.env.DELAY);
     }
-}
 
-function delay(time) {
-    return new Promise((resolve) => setTimeout(resolve, time));
-}
-
-async function run() {
-    const id = await getServerID();
-    GETreq(`${URL}/guilds/${id}/members?limit=${process.env.LIMIT}`, BotHeaders)
-        .then(async (data) => {
-            for (let mfs of data) {
-                await delay(process.env.DELAY);
-                GETreq(
-                    `${URL}/users/${mfs.user.id}/profile?guild_id=${id}`,
-                    UserHeaders
-                ).then((resource) => {
-                    for (let account of resource.connected_accounts) {
-                        if (account.type == 'github') {
-                            console.log(
-                                table.push([
-                                    `${resource.user.username}#${resource.user.discriminator}`,
-                                    `https://github.com/${account.name}`,
-                                ])
-                            );
-                        }
-                    }
-                });
-            }
-        })
-        .then(() => {
-            console.log(table.toString());
-        });
-}
+    console.log(table.toString());
+};
 
 run();
+
+module.exports = { fetchData, getServerID};
