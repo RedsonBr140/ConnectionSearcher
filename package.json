@@ -8,7 +8,7 @@
     },
     "keywords": [],
     "author": "",
-    "license": "ISC",
+    "license": "MIT",
     "dependencies": {
         "cli-table": "^0.3.11",
         "discord.js": "^14.7.1",
