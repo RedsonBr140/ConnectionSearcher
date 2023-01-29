@@ -15,7 +15,9 @@ cd ConnectionSearcher
 cp .env.sample .env
 $EDITOR .env
 
-# Run the project.
+# Install node dependenciers and run the project.
+
+npm install
 node .
 ```
 > :warning: **USE THIS SOFTWARE AT YOUR OWN RISK, IT'S AGAINST DISCORD'S ToS. :warning:**
